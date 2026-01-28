@@ -1,6 +1,6 @@
 import pytest
 
-from prp import PRP
+from prp.main import PRP
 
 
 def test_add_registry():
