@@ -13,7 +13,7 @@ import argparse
 from urllib.parse import urlparse
 import urllib.request
 import urllib.error
-
+from . import __version__
 
 class PRP:
     def __init__(self):
@@ -452,7 +452,7 @@ For more information, visit: https://github.com/Tser/xiaobai-prp
     """.strip()
     parser = argparse.ArgumentParser(
         prog='prp',
-        description='PRP (Python Registry Provider) 是一个用于管理 Python 包索引源的工具\nby 807447312@qq.com',
+        description=f'PRP (Python Registry Provider) 版本：{__version__} 是一个用于管理 Python 包索引源的工具\nby 807447312@qq.com',
         epilog=epilog_text,
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
@@ -482,6 +482,8 @@ For more information, visit: https://github.com/Tser/xiaobai-prp
     
     # Current command
     subparsers.add_parser('current', help='显示当前索引源(Show current registry)')
+
+    subparsers.add_parser('version', help='显示当前版本(Show current version)')
     
     args = parser.parse_args()
     
@@ -503,6 +505,8 @@ For more information, visit: https://github.com/Tser/xiaobai-prp
         prp.test_registry_speed(args.name)
     elif args.command == 'current':
         prp.current_registry_info()
+    elif args.command == 'version':
+        print(__version__)
 
 
 if __name__ == '__main__':
