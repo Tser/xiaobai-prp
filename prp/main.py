@@ -18,18 +18,36 @@ import urllib.error
 class PRP:
     def __init__(self):
         self.config_file = os.path.expanduser("~/.prp/config.json")
-        # 设置pip配置文件的正确路径
-        if sys.platform.startswith("win"):
-            # Windows系统的pip配置文件路径
-            self.pip_config_file = os.path.expandvars("%APPDATA%/pip/pip.ini")
-        else:
-            # Mac/Linux系统的pip配置文件路径
-            self.pip_config_file = os.path.expanduser("~/.config/pip/pip.conf")
+        # 使用实际的pip配置文件路径
+        self.pip_config_file = self.get_pip_config_path()
         self.ensure_config_exists()
         self.load_registries()
 
+    def get_pip_config_path(self):
+        """获取实际的pip配置文件路径"""
+        if sys.platform.startswith("win"):
+            # Windows系统的pip配置文件路径
+            config_path = os.path.expandvars("%APPDATA%/pip/pip.ini")
+        else:
+            # Mac/Linux系统的pip配置文件路径
+            config_path = os.path.expanduser("~/.config/pip/pip.conf")
+        
+        # 检查配置文件是否存在，如果不存在，尝试其他可能的路径
+        if not os.path.exists(config_path):
+            # 检查备用路径
+            alt_config_path = os.path.expanduser("~/.pip/pip.conf")  # Linux/macOS备用路径
+            if sys.platform.startswith("win"):
+                alt_config_path = os.path.expandvars("%APPDATA%\\pip\\pip.conf")  # Windows备用路径
+            
+            if os.path.exists(alt_config_path):
+                return alt_config_path
+        
+        return config_path
+
     def ensure_config_exists(self):
         """确保配置文件存在"""
+        #优先获取pip配置文件是否存在并获取当前索引源
+        current_source_url = self.get_current_source_from_pip_config()
         config_dir = os.path.dirname(self.config_file)
         if not os.path.exists(config_dir):
             os.makedirs(config_dir)
@@ -71,10 +89,39 @@ class PRP:
                 },
                 "current_registry": "pypi"
             }
-            
+            current_registry_name_list = self.get_name_from_url(current_source_url, default_config)
+            if len(current_registry_name_list) > 0:
+                current_registry_name = current_registry_name_list[0]
+            else:
+                current_registry_name = self.generate_auto_registry_name(current_source_url)
+            # add registry
+            default_config['registries'][current_registry_name] = {
+                'url': current_source_url,
+                'home': self.extract_homepage(current_source_url),
+                'name': current_registry_name
+            }
+            default_config['current_registry'] = current_registry_name
             with open(self.config_file, 'w', encoding='utf-8') as f:
                 json.dump(default_config, f, indent=2, ensure_ascii=False)
-    
+        else:
+            # check if the config file exists
+            with open(self.config_file, 'r', encoding='utf-8') as f:
+                config = json.load(f)
+                current_registry_name_list = self.get_name_from_url(current_source_url, config)
+                if len(current_registry_name_list) > 0:
+                    current_registry_name = current_registry_name_list[0]
+                else:
+                    current_registry_name = self.generate_auto_registry_name(current_source_url)
+            # add registry
+            config['registries'][current_registry_name] = {
+                'url': current_source_url,
+                'home': self.extract_homepage(current_source_url),
+                'name': current_registry_name
+            }
+            config['current_registry'] = current_registry_name
+            with open(self.config_file, 'w', encoding='utf-8') as f:
+                json.dump(config, f, indent=2, ensure_ascii=False)
+
     def load_registries(self):
         """加载包索引源配置"""
         with open(self.config_file, 'r', encoding='utf-8') as f:
@@ -171,38 +218,57 @@ class PRP:
         # 解析现有配置，保留其他设置
         lines = config_content.splitlines()
         new_lines = []
-        found_global_section = False
+        in_global_section = False
         replaced_index_url = False
         
         for line in lines:
             stripped = line.strip()
-            if stripped == "[global]" and not found_global_section:
+            if stripped == "[global]":
+                in_global_section = True
                 new_lines.append(line)
-                # 在[global]部分添加或替换index-url
+            elif stripped.startswith("index-url = "):
+                # 替换现有的index-url
                 new_lines.append(f"index-url = {registry_url}")
-                found_global_section = True
                 replaced_index_url = True
-            elif stripped.startswith("index-url = ") and found_global_section:
-                # 跳过旧的index-url行，因为我们已经在[global]后添加了新的
-                continue
+            elif stripped.startswith("extra-index-url = "):
+                # 保留extra-index-url设置
+                new_lines.append(line)
+            elif stripped.startswith("[") and stripped.endswith("]"):
+                # 如果遇到另一个section且还没有添加global部分，则在此前添加
+                if not in_global_section and not replaced_index_url:
+                    new_lines.append("[global]")
+                    new_lines.append(f"index-url = {registry_url}")
+                    replaced_index_url = True
+                in_global_section = False
+                new_lines.append(line)
             else:
                 new_lines.append(line)
         
         # 如果没有找到[global]部分，则添加
-        if not found_global_section:
-            if new_lines and new_lines[-1] != "":
-                new_lines.append("")
-            new_lines.append("[global]")
-            new_lines.append(f"index-url = {registry_url}")
-        elif not replaced_index_url:
-            # 如果找到了[global]但没有替换index-url（因为不在第一行）
-            idx = -1
+        if not replaced_index_url:
+            # 添加[global]部分和index-url
+            if not any(line.strip() == "[global]" for line in new_lines):
+                if new_lines and new_lines[-1] != "":
+                    new_lines.append("")
+                new_lines.append("[global]")
+            # 确保index-url在[global]部分之后
+            global_idx = -1
             for i, line in enumerate(new_lines):
                 if line.strip() == "[global]":
-                    idx = i
+                    global_idx = i
                     break
-            if idx != -1:
-                new_lines.insert(idx + 1, f"index-url = {registry_url}")
+            if global_idx != -1:
+                # 检查global section下是否已经有index-url
+                idx = global_idx + 1
+                while idx < len(new_lines) and not new_lines[idx].strip().startswith("["):
+                    if new_lines[idx].strip().startswith("index-url = "):
+                        new_lines[idx] = f"index-url = {registry_url}"
+                        replaced_index_url = True
+                        break
+                    idx += 1
+                
+                if not replaced_index_url:
+                    new_lines.insert(idx, f"index-url = {registry_url}")
         
         # 写入更新后的配置
         with open(self.pip_config_file, 'w', encoding='utf-8') as f:
@@ -241,10 +307,10 @@ class PRP:
                 # 处理HTTP错误
                 end_time = time.time()
                 response_time = round((end_time - start_time) * 1000, 2)
-                results.append((reg_name, response_time, f"Error: {e.code}"))
+                results.append((reg_name, response_time, f"HTTP Error: {e.code}"))
             except urllib.error.URLError as e:
                 # 处理URL错误（如连接失败）
-                results.append((reg_name, float('inf'), f"Error: {str(e.reason)}"))
+                results.append((reg_name, float('inf'), f"Connection Error: {str(e.reason)}"))
             except Exception as e:
                 # 处理其他异常
                 results.append((reg_name, float('inf'), f"Error: {str(e)}"))
@@ -301,6 +367,10 @@ class PRP:
         
         print(f"Configured in pip: {self.pip_config_file}")
 
+    def get_name_from_url(self, url, registries_dict):
+        """从字典对象中通过url查找name值"""
+        return list(filter(lambda x: registries_dict['registries'][x]['url'] == url, registries_dict['registries'].keys()))
+    
     def extract_homepage(self, url):
         """从URL提取主页地址"""
         parsed = urlparse(url)
@@ -367,38 +437,51 @@ class PRP:
             # 如果读取配置文件出现问题，返回None
             return None
 
-
 def main():
+    epilog_text = """
+Examples:
+  prp ls                           列出所有索引源(List all registries)
+  prp use tuna                     切换索引源为tuna(Switch to TUNA mirror)
+  prp add myregistry https://myregistry.example.com/simple/   添加自定义索引源(Add custom registry)
+  prp del myregistry               删除特定索引源(Delete a registry)
+  prp test [tuna]                  测试所有或者特定索引源速度(Test registry speeds)
+  prp current                      查看当前索引源(Show current registry)
+
+获取更多帮助信息，浏览：https://github.com/Tser/xiaobai-prp
+For more information, visit: https://github.com/Tser/xiaobai-prp
+    """.strip()
     parser = argparse.ArgumentParser(
         prog='prp',
-        description='Python Registry Provider - 管理Python包索引源(Manage Python package index sources)\n  by 807447312@qq.com'
+        description='PRP (Python Registry Provider) 是一个用于管理 Python 包索引源的工具\nby 807447312@qq.com',
+        epilog=epilog_text,
+        formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     
     subparsers = parser.add_subparsers(dest='command', help='可用命令(Available commands)')
     
     # List command
-    subparsers.add_parser('ls', help='列出所有包索引源(List all registries)')
+    subparsers.add_parser('ls', help='列出所有索引源(List all registries)')
     
     # Add command
-    add_parser = subparsers.add_parser('add', help='添加新的包索引源(Add a new registry)')
-    add_parser.add_argument('name', help='包索引源名称(Registry name)')
-    add_parser.add_argument('url', help='包索引源URL(Registry URL)')
-    add_parser.add_argument('home', nargs='?', help='包索引源主页(可选)(Registry homepage (optional))')
+    add_parser = subparsers.add_parser('add', help='添加新的索引源(Add a new registry)')
+    add_parser.add_argument('name', help='索引源名称(Registry name)')
+    add_parser.add_argument('url', help='索引源URL(Registry URL)')
+    add_parser.add_argument('home', nargs='?', help='索引源主页(可选)(Registry homepage (optional))')
     
     # Delete command
     del_parser = subparsers.add_parser('del', help='删除包索引源(Delete a registry)')
     del_parser.add_argument('name', help='要删除的包索引源名称(Registry name to delete)')
     
     # Use command
-    use_parser = subparsers.add_parser('use', help='切换到指定包索引源(Switch to a registry)')
-    use_parser.add_argument('name', help='要切换到的包索引源名称(Registry name to switch to)')
+    use_parser = subparsers.add_parser('use', help='切换到指定索引源(Switch to a registry)')
+    use_parser.add_argument('name', help='要切换到的索引源名称(Registry name to switch to)')
     
     # Test command
-    test_parser = subparsers.add_parser('test', help='测试包索引源速度(Test registry speed)')
-    test_parser.add_argument('name', nargs='?', help='要测试的特定包索引源名称(可选)(Specific registry name to test (optional))')
+    test_parser = subparsers.add_parser('test', help='测试索引源速度(Test registry speed)')
+    test_parser.add_argument('name', nargs='?', help='要测试的特定索引源名称(可选)(Specific registry name to test (optional))')
     
     # Current command
-    subparsers.add_parser('current', help='显示当前包索引源(Show current registry)')
+    subparsers.add_parser('current', help='显示当前索引源(Show current registry)')
     
     args = parser.parse_args()
     
