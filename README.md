@@ -1,5 +1,7 @@
 # PRP - Python Registry Provider (Python包索引提供商)
 
+[![Downloads](https://pepy.tech/badge/xiaobai-prp)](https://pepy.tech/project/xiaobai-prp)
+
 ## 目录 (Table of Contents)
 - [简介](#prp---python-registry-provider-python包索引提供商)
 - [功能](#功能)
@@ -10,6 +12,7 @@
 - [许可证](#许可证)
 
 PRP (Python Registry Provider) 是一个用于管理Python包索引源的命令行工具，类似于npm的nrm。它允许您轻松切换不同的Python包索引，如PyPI、TUNA、阿里云等。
+
 PRP (Python Registry Provider) is a command-line tool for managing Python package index sources, similar to `nrm` for npm. It allows you to easily switch between different Python package indexes such as PyPI, TUNA, Aliyun, and more.
 
 ## 功能 (Features)

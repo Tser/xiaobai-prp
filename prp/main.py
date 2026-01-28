@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 """
 PRP - Python Registry Provider
-A tool for managing Python package index sources similar to nrm for npm.
+A tool for managing Python package index sources.
 """
 
 import os
@@ -13,7 +13,9 @@ import argparse
 from urllib.parse import urlparse
 import urllib.request
 import urllib.error
-from . import __version__
+
+# 定义版本
+__version__ = "1.0.10"
 
 class PRP:
     def __init__(self):
@@ -46,7 +48,7 @@ class PRP:
 
     def ensure_config_exists(self):
         """确保配置文件存在"""
-        #优先获取pip配置文件是否存在并获取当前索引源
+        # 优先获取pip配置文件是否存在并获取当前索引源
         current_source_url = self.get_current_source_from_pip_config()
         config_dir = os.path.dirname(self.config_file)
         if not os.path.exists(config_dir):
@@ -89,38 +91,42 @@ class PRP:
                 },
                 "current_registry": "pypi"
             }
-            current_registry_name_list = self.get_name_from_url(current_source_url, default_config)
-            if len(current_registry_name_list) > 0:
-                current_registry_name = current_registry_name_list[0]
-            else:
-                current_registry_name = self.generate_auto_registry_name(current_source_url)
-            # add registry
-            default_config['registries'][current_registry_name] = {
-                'url': current_source_url,
-                'home': self.extract_homepage(current_source_url),
-                'name': current_registry_name
-            }
-            default_config['current_registry'] = current_registry_name
+            self.registries = default_config['registries']
+            if current_source_url:
+                current_registry_name_list = self.get_name_from_url(current_source_url, default_config)
+                if len(current_registry_name_list) > 0:
+                    current_registry_name = current_registry_name_list[0]
+                else:
+                    current_registry_name = self.generate_auto_registry_name(current_source_url)
+                # add registry
+                default_config['registries'][current_registry_name] = {
+                    'url': current_source_url,
+                    'home': self.extract_homepage(current_source_url),
+                    'name': current_registry_name
+                }
+                default_config['current_registry'] = current_registry_name
             with open(self.config_file, 'w', encoding='utf-8') as f:
                 json.dump(default_config, f, indent=2, ensure_ascii=False)
         else:
             # check if the config file exists
             with open(self.config_file, 'r', encoding='utf-8') as f:
                 config = json.load(f)
+                self.registries = config['registries']
+            if current_source_url:
                 current_registry_name_list = self.get_name_from_url(current_source_url, config)
                 if len(current_registry_name_list) > 0:
                     current_registry_name = current_registry_name_list[0]
                 else:
                     current_registry_name = self.generate_auto_registry_name(current_source_url)
-            # add registry
-            config['registries'][current_registry_name] = {
-                'url': current_source_url,
-                'home': self.extract_homepage(current_source_url),
-                'name': current_registry_name
-            }
-            config['current_registry'] = current_registry_name
-            with open(self.config_file, 'w', encoding='utf-8') as f:
-                json.dump(config, f, indent=2, ensure_ascii=False)
+                # add registry
+                config['registries'][current_registry_name] = {
+                    'url': current_source_url,
+                    'home': self.extract_homepage(current_source_url),
+                    'name': current_registry_name
+                }
+                config['current_registry'] = current_registry_name
+                with open(self.config_file, 'w', encoding='utf-8') as f:
+                    json.dump(config, f, indent=2, ensure_ascii=False)
 
     def load_registries(self):
         """加载包索引源配置"""
@@ -173,10 +179,12 @@ class PRP:
         if len(self.registries) <= 1:
             print("Cannot delete the last registry.")
             return
-            
+        
         del self.registries[name]
         if self.current_registry == name:
             self.current_registry = next(iter(self.registries))  # 设置为第一个可用的
+            self.update_pip_config()
+            print(f"你删除的是当前的索引源，已设置为 {self.current_registry}")
         self.save_config()
         print(f"Registry '{name}' deleted successfully.")
 
@@ -439,20 +447,21 @@ class PRP:
 
 def main():
     epilog_text = """
-Examples:
+实例(Examples):
   prp ls                           列出所有索引源(List all registries)
   prp use tuna                     切换索引源为tuna(Switch to TUNA mirror)
   prp add myregistry https://myregistry.example.com/simple/   添加自定义索引源(Add custom registry)
   prp del myregistry               删除特定索引源(Delete a registry)
   prp test [tuna]                  测试所有或者特定索引源速度(Test registry speeds)
   prp current                      查看当前索引源(Show current registry)
+  prp version                      查看版本信息(Show version)
 
 获取更多帮助信息，浏览：https://github.com/Tser/xiaobai-prp
 For more information, visit: https://github.com/Tser/xiaobai-prp
     """.strip()
     parser = argparse.ArgumentParser(
         prog='prp',
-        description=f'PRP (Python Registry Provider) 版本：{__version__} 是一个用于管理 Python 包索引源的工具\nby 807447312@qq.com',
+        description=f'PRP (Python Registry Provider) \n版本：{__version__} \n是一个用于管理 Python 包索引源的工具\nby 807447312@qq.com',
         epilog=epilog_text,
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )

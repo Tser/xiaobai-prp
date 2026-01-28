@@ -14,13 +14,13 @@ with open("README.md", "r", encoding="utf-8") as fh:
 
 setup(
     name="xiaobai-prp",
-    version="1.0.8",
+    version="1.0.10",
     author="Tser",
     author_email="807447312@qq.com",
     description="Python Registry Provider - A tool for managing Python package index sources similar to nrm for npm",
     long_description=long_description,
     long_description_content_type="text/markdown",
-    url="https://github.com/tser/xiaobai-prp",
+    url="https://github.com/Tser/xiaobai-prp",
     packages=find_packages(),
     classifiers=[
         "Development Status :: 4 - Beta",

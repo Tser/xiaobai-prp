@@ -4,7 +4,7 @@ requires = ["setuptools>=45", "wheel", "setuptools_scm[toml]>=6.2"]
 [project]
 name = "xiaobai-prp"
 dynamic = ["version"]
-description = "Python Registry Provider - A tool for managing Python package index sources similar to nrm for npm"
+description = "Python Registry Provider - A tool for managing Python package index sources."
 readme = "README.md"
 license = {text = "GPL-3.0"}
 authors = [
